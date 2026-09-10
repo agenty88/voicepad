@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14181f">
+<title>VoicePad — голосовой блокнот</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<button id="burger" aria-label="Заметки">☰</button>
+
+<div id="app">
+
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#4f9dff" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2" width="6" height="12" rx="3"/>
+          <path d="M5 10a7 7 0 0 0 14 0"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+        <span>VoicePad</span>
+      </div>
+      <button id="btnNew" title="Новая заметка">＋</button>
+    </div>
+
+    <input id="search" type="search" placeholder="Поиск…  ( / )" autocomplete="off">
+    <select id="sort">
+      <option value="date_desc">Сначала новые</option>
+      <option value="date_asc">Сначала старые</option>
+      <option value="title">По названию А–Я</option>
+    </select>
+
+    <div id="notes"></div>
+  </aside>
+
+  <div id="overlay"></div>
+
+  <main id="editor">
+    <div class="editor-top">
+      <input id="title" placeholder="Название заметки" autocomplete="off">
+      <div class="lang-group" role="group" aria-label="Язык диктовки">
+        <button class="lang" data-lang="ru">RU</button>
+        <button class="lang" data-lang="uk">UA</button>
+        <button class="lang" data-lang="en">EN</button>
+      </div>
+    </div>
+
+    <textarea id="text" placeholder="Диктуйте большой кнопкой ниже или печатайте здесь…&#10;&#10;F2 — старт/стоп диктовки&#10;Esc — остановить"></textarea>
+
+    <div class="editor-bottom">
+      <span id="stats"></span>
+      <div class="actions">
+        <button id="btnExport" title="Скачать эту заметку (.txt)">⬇ txt</button>
+        <button id="btnExportAll" title="Скачать все заметки одним файлом (.txt)">⬇ все</button>
+        <button id="btnDelete" title="Удалить заметку">Удалить</button>
+      </div>
+    </div>
+
+    <div class="rec-zone">
+      <button id="btnRecord" aria-label="Старт / стоп диктовки">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="9" y="2" width="6" height="12" rx="3"/>
+          <path d="M5 10a7 7 0 0 0 14 0"/>
+          <line x1="12" y1="19" x2="12" y2="22"/>
+        </svg>
+      </button>
+      <div id="recInfo">
+        <div id="recLabel">Диктовать</div>
+        <div id="recTimer"></div>
+      </div>
+    </div>
+
+    <div id="recStatus"></div>
+  </main>
+
+</div>
+
+<div id="serverBanner" class="hidden">
+  <span>Whisper-сервер не отвечает.</span>
+  <span>Откройте Termux и выполните: <code>bash ~/start-whisper.sh</code></span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
