@@ -1,7 +1,7 @@
-/* VoicePad — голосовой блокнот (PWA + локальный whisper.cpp в Termux) */
+/* VoicePad — голосовой блокнот
+   Распознавание речи: Whisper (ONNX) прямо в браузере, локально, без сервера */
 'use strict';
 
-const WHISPER_URL = localStorage.getItem('voicepad.url') || 'http://127.0.0.1:8080';
 const TARGET_RATE = 16000;        // Whisper принимает 16 кГц
 const CHUNK_SEC = 4;              // длина аудио-чанка для распознавания
 const CHUNK_SAMPLES = TARGET_RATE * CHUNK_SEC;
@@ -12,6 +12,7 @@ let notes = [];
 let activeId = null;
 let lang = localStorage.getItem('voicepad.lang') || 'ru';
 let sortMode = localStorage.getItem('voicepad.sort') || 'date_desc';
+let modelChoice = localStorage.getItem('voicepad.model') || 'base';
 
 const $ = id => document.getElementById(id);
 const els = {
@@ -19,8 +20,11 @@ const els = {
   title: $('title'), text: $('text'), stats: $('stats'),
   btnNew: $('btnNew'), btnExport: $('btnExport'), btnExportAll: $('btnExportAll'),
   btnDelete: $('btnDelete'), btnRecord: $('btnRecord'), recLabel: $('recLabel'),
-  recTimer: $('recTimer'), recStatus: $('recStatus'), banner: $('serverBanner'),
+  recTimer: $('recTimer'), recStatus: $('recStatus'),
   burger: $('burger'), sidebar: $('sidebar'), overlay: $('overlay'),
+  splash: $('splash'), splashFill: $('splashFill'), splashStatus: $('splashStatus'),
+  splashRetry: $('splashRetry'),
+  modelSel: $('modelSel'), modelStatus: $('modelStatus'), btnReloadModel: $('btnReloadModel'),
 };
 
 function load() {
@@ -142,7 +146,7 @@ els.text.addEventListener('input', scheduleSave);
 /* ---------- Экспорт ---------- */
 
 function download(name, content) {
-  const blob = new Blob(['\ufeff' + content], { type: 'text/plain;charset=utf-8' });
+  const blob = new Blob(['﻿' + content], { type: 'text/plain;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -177,7 +181,117 @@ els.btnDelete.onclick = () => {
   renderAll();
 };
 
-/* ---------- Запись и распознавание ---------- */
+/* ---------- Whisper: воркер и модель ---------- */
+
+let worker = null;
+let whisperReady = false;
+let whisperIniting = false;
+
+function setModelStatus(text, cls) {
+  els.modelStatus.textContent = text;
+  els.modelStatus.className = cls || '';
+}
+
+function setSplash(pct, text) {
+  els.splashFill.style.width = pct + '%';
+  if (text) els.splashStatus.textContent = text;
+}
+
+function hideSplash() {
+  els.splash.classList.add('done');
+  setTimeout(() => { els.splash.style.display = 'none'; }, 600);
+}
+
+function initWhisper() {
+  if (whisperIniting) return;
+  whisperIniting = true;
+  whisperReady = false;
+
+  if (worker) worker.terminate();
+  worker = new Worker('whisper-worker.js', { type: 'module' });
+
+  setModelStatus('загружается…', 'warn');
+  setSplash(5, 'Загрузка модели распознавания…');
+
+  worker.onmessage = (e) => {
+    const d = e.data || {};
+    if (d.type === 'progress') {
+      setSplash(5 + (d.progress || 0) * 90,
+        `Загрузка модели: ${Math.round((d.progress || 0) * 100)}%`);
+      return;
+    }
+    if (d.type === 'ready') {
+      whisperReady = true;
+      whisperIniting = false;
+      if (d.fallback) {
+        setModelStatus(`tiny · WASM (медленно)`, 'warn');
+        setSplash(100, d.warning || 'Готово (режим совместимости)');
+      } else {
+        setModelStatus(`${d.model} · готово`, 'ok');
+        setSplash(100, 'Готово!');
+      }
+      setTimeout(hideSplash, 400);
+      return;
+    }
+    if (d.type === 'error') {
+      whisperIniting = false;
+      setModelStatus('ошибка загрузки', 'err');
+      setSplash(0, 'Ошибка: ' + d.error);
+      els.splashRetry.classList.remove('hidden');
+      els.splash.style.display = 'flex';
+      els.splash.classList.remove('done');
+    }
+  };
+
+  worker.onerror = (err) => {
+    whisperIniting = false;
+    setModelStatus('ошибка', 'err');
+    setSplash(0, 'Не удалось запустить распознавание: ' + (err.message || 'ошибка воркера'));
+    els.splashRetry.classList.remove('hidden');
+    els.splash.style.display = 'flex';
+    els.splash.classList.remove('done');
+  };
+
+  worker.postMessage({ type: 'init', model: modelChoice });
+}
+
+els.splashRetry.onclick = () => {
+  els.splashRetry.classList.add('hidden');
+  initWhisper();
+};
+
+els.btnReloadModel.onclick = () => {
+  if (recording) return;
+  els.splash.style.display = 'flex';
+  els.splash.classList.remove('done');
+  els.splashRetry.classList.add('hidden');
+  setSplash(0, 'Перезагрузка модели…');
+  initWhisper();
+};
+
+els.modelSel.onchange = () => {
+  modelChoice = els.modelSel.value;
+  localStorage.setItem('voicepad.model', modelChoice);
+  if (!recording) els.btnReloadModel.onclick();
+};
+
+function transcribe(audio, language) {
+  return new Promise((resolve, reject) => {
+    if (!whisperReady || !worker) { reject(new Error('Модель не готова')); return; }
+    const requestId = 'stt-' + Date.now() + '-' + Math.random();
+    const handler = (e) => {
+      const d = e.data || {};
+      if (d.requestId !== requestId) return;
+      worker.removeEventListener('message', handler);
+      if (d.type === 'result') resolve(d.text);
+      else reject(new Error(d.error || 'Ошибка распознавания'));
+    };
+    worker.addEventListener('message', handler);
+    worker.postMessage({ type: 'transcribe', audio, language, requestId }, [audio.buffer]);
+  });
+}
+
+/* ---------- Запись аудио ---------- */
 
 let recording = false;
 let mediaStream = null, audioCtx = null, processor = null;
@@ -203,31 +317,6 @@ function resample(input, from, to) {
   return out;
 }
 
-function encodeWAV(float32) {
-  const buf = new ArrayBuffer(44 + float32.length * 2);
-  const v = new DataView(buf);
-  const wstr = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
-  wstr(0, 'RIFF');
-  v.setUint32(4, 36 + float32.length * 2, true);
-  wstr(8, 'WAVE');
-  wstr(12, 'fmt ');
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);          // PCM
-  v.setUint16(22, 1, true);          // mono
-  v.setUint32(24, TARGET_RATE, true);
-  v.setUint32(28, TARGET_RATE * 2, true);
-  v.setUint16(32, 2, true);
-  v.setUint16(34, 16, true);
-  wstr(36, 'data');
-  v.setUint32(40, float32.length * 2, true);
-  let off = 44;
-  for (let i = 0; i < float32.length; i++, off += 2) {
-    const s = Math.max(-1, Math.min(1, float32[i]));
-    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-  }
-  return new Blob([buf], { type: 'audio/wav' });
-}
-
 function setStatus(t) { els.recStatus.textContent = t; }
 
 function flushChunks() {
@@ -235,37 +324,24 @@ function flushChunks() {
     const raw = samples.slice(0, CHUNK_SAMPLES);
     samples = samples.slice(CHUNK_SAMPLES);
     const pcm16 = resample(raw, inRate, TARGET_RATE);
-    enqueueSend(encodeWAV(pcm16));
+    enqueueSend(pcm16);
   }
 }
 
-function enqueueSend(blob) {
-  sendChain = sendChain.then(() => sendChunk(blob)).catch(() => {});
+function enqueueSend(pcm16) {
+  const copy = new Float32Array(pcm16); // передаём буфером в воркер
+  sendChain = sendChain.then(() => sendChunk(copy)).catch(() => {});
 }
 
-async function sendChunk(blob) {
-  if (!recording) return;
+async function sendChunk(pcm16) {
   setStatus('Распознаю…');
-  const fd = new FormData();
-  fd.append('file', blob, 'chunk.wav');
-  fd.append('language', lang);
-  fd.append('response-format', 'json');
-
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const r = await fetch(WHISPER_URL + '/inference', { method: 'POST', body: fd, signal: ctrl.signal });
-    clearTimeout(t);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    const text = (data.text || '').trim();
+    const text = await transcribe(pcm16, lang);
     if (text) appendText(text);
-    setStatus(recording ? 'Слушаю…' : '');
   } catch (e) {
-    clearTimeout(t);
-    if (recording) setStatus('Нет связи с Whisper, повторяю…');
-    throw e;
+    if (whisperReady) setStatus('Ошибка: ' + e.message);
   }
+  if (recording) setStatus('Слушаю…');
 }
 
 function appendText(t) {
@@ -289,13 +365,17 @@ function startTimer() {
 }
 
 async function startRec() {
+  if (!whisperReady) {
+    setStatus('Модель ещё загружается — подождите…');
+    return;
+  }
   if (!activeNote()) newNote();
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
   } catch {
-    setStatus('Нет доступа к микрофону — разрешите его в настройках Brave.');
+    setStatus('Нет доступа к микрофону — разрешите его в настройках браузера.');
     return;
   }
   recording = true;
@@ -336,7 +416,7 @@ async function stopRec() {
   const rest = samples; samples = [];
   if (rest.length > TARGET_RATE / 4) {
     const pcm16 = resample(rest, inRate, TARGET_RATE);
-    enqueueSend(encodeWAV(pcm16));
+    enqueueSend(pcm16);
   }
   setStatus('Распознаю…');
   await sendChain.catch(() => {});
@@ -344,22 +424,6 @@ async function stopRec() {
 }
 
 els.btnRecord.onclick = () => recording ? stopRec() : startRec();
-
-/* ---------- Проверка сервера ---------- */
-
-async function pingServer() {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 4000);
-    const r = await fetch(WHISPER_URL + '/health', { signal: ctrl.signal });
-    clearTimeout(t);
-    els.banner.classList.toggle('hidden', r.ok);
-  } catch {
-    els.banner.classList.remove('hidden');
-  }
-}
-setInterval(pingServer, 15000);
-pingServer();
 
 /* ---------- Горячие клавиши ---------- */
 
@@ -400,13 +464,14 @@ els.sort.onchange = () => {
   renderList();
 };
 els.sort.value = sortMode;
+els.modelSel.value = modelChoice;
 
 load();
 if (!notes.length) {
   notes.push({
     id: Date.now(),
     title: 'Добро пожаловать!',
-    text: 'Нажмите большую красную кнопку и начните диктовать.\n\nF2 — старт/стоп диктовки, Esc — остановить.\nЯзык переключается кнопками RU / UA / EN.\n\nДля распознавания речи приложение обращается к локальному серверу Whisper (Termux). Если внизу появляется предупреждение — запустите сервер: bash ~/start-whisper.sh',
+    text: 'Нажмите большую красную кнопку и начните диктовать.\n\nF2 — старт/стоп диктовки, Esc — остановить.\nЯзык переключается кнопками RU / UA / EN.\n\nРаспознавание работает локально на устройстве. При первом запуске модель скачивается один раз (~90 МБ), дальше приложение работает офлайн. Если распознавание кажется медленным — в меню слева переключите модель на tiny.',
     updated: Date.now(),
   });
   save();
@@ -414,3 +479,4 @@ if (!notes.length) {
 activeId = notes[0].id;
 renderLang();
 renderAll();
+initWhisper();

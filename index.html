@@ -12,6 +12,20 @@
 </head>
 <body>
 
+<!-- Экран загрузки модели (показывается при первом запуске / скачивании) -->
+<div id="splash">
+  <svg viewBox="0 0 24 24" width="72" height="72" fill="none" stroke="#4f9dff" stroke-width="1.6" stroke-linecap="round">
+    <rect x="9" y="2" width="6" height="12" rx="3"/>
+    <path d="M5 10a7 7 0 0 0 14 0"/>
+    <line x1="12" y1="19" x2="12" y2="22"/>
+  </svg>
+  <h1>VoicePad</h1>
+  <p>Голосовой блокнот. Распознавание речи — локально, на устройстве. Русский · Українська · English</p>
+  <div class="progress-bar"><div class="progress-fill" id="splashFill"></div></div>
+  <div class="status" id="splashStatus">Подготовка…</div>
+  <button id="splashRetry" class="hidden">Повторить загрузку</button>
+</div>
+
 <button id="burger" aria-label="Заметки">☰</button>
 
 <div id="app">
@@ -37,6 +51,20 @@
     </select>
 
     <div id="notes"></div>
+
+    <div class="model-box">
+      <div class="model-row">
+        <label for="modelSel">Модель</label>
+        <select id="modelSel">
+          <option value="base">base — точнее</option>
+          <option value="tiny">tiny — быстрее</option>
+        </select>
+      </div>
+      <div class="model-row">
+        <span id="modelStatus">загружается…</span>
+        <button id="btnReloadModel" title="Скачать модель заново">↻</button>
+      </div>
+    </div>
   </aside>
 
   <div id="overlay"></div>

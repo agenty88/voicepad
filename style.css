@@ -321,3 +321,79 @@ button:active { transform: scale(.97); }
 
   #editor { padding-top: calc(62px + env(safe-area-inset-top)); }
 }
+
+/* ---------- Splash (загрузка модели) ---------- */
+
+#splash {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: opacity .5s;
+  padding: 24px;
+  text-align: center;
+}
+
+#splash h1 { font-size: 26px; margin: 18px 0 8px; }
+#splash p { color: var(--muted); font-size: 14px; max-width: 320px; line-height: 1.5; }
+
+.progress-bar {
+  width: 220px;
+  height: 6px;
+  background: var(--bg3);
+  border-radius: 3px;
+  margin-top: 28px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width .3s;
+}
+
+#splash .status { margin-top: 12px; font-size: 13px; color: var(--muted); min-height: 18px; }
+
+#splashRetry { margin-top: 16px; }
+
+#splash.done { opacity: 0; pointer-events: none; }
+
+/* ---------- Модель в сайдбаре ---------- */
+
+.model-box {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.model-row select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.model-row button { padding: 5px 10px; font-size: 14px; }
+
+#modelStatus.ok { color: #6fcf97; }
+#modelStatus.warn { color: #f2c94c; }
+#modelStatus.err { color: var(--danger); }

@@ -27,8 +27,26 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  // не трогаем запросы к локальному Whisper-серверу
-  if (e.request.url.includes('127.0.0.1') || e.request.url.includes('localhost')) return;
+  const url = new URL(e.request.url);
+
+  // CDN (библиотека transformers.js): кэшируем при первом успешном запросе,
+  // чтобы приложение запускалось офлайн
+  if (url.origin !== self.location.origin) {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(res => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then(c => c.put(e.request, copy));
+          }
+          return res;
+        }).catch(() => cached);
+      })
+    );
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
