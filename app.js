@@ -324,8 +324,26 @@ function flushChunks() {
     const raw = samples.slice(0, CHUNK_SAMPLES);
     samples = samples.slice(CHUNK_SAMPLES);
     const pcm16 = resample(raw, inRate, TARGET_RATE);
-    enqueueSend(pcm16);
+    if (!isSilent(pcm16)) enqueueSend(pcm16);
   }
+}
+
+// тишина/шум не отправляем в модель: Whisper «галлюцинирует» субтитровые фразы
+function rms(pcm) {
+  if (!pcm.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < pcm.length; i++) sum += pcm[i] * pcm[i];
+  return Math.sqrt(sum / pcm.length);
+}
+
+function isSilent(pcm) { return rms(pcm) < 0.01; }
+
+// известные галлюцинации Whisper (титры из обучающей выборки)
+const HALLUCINATION_RE = /субтитр|редактор субтитров|корректор|dimatorzok/i;
+
+function isHallucination(text) {
+  // фильтруем только короткие совпадения — длинный осмысленный текст не трогаем
+  return text.length < 80 && HALLUCINATION_RE.test(text);
 }
 
 function enqueueSend(pcm16) {
@@ -416,7 +434,7 @@ async function stopRec() {
   const rest = samples; samples = [];
   if (rest.length > TARGET_RATE / 4) {
     const pcm16 = resample(rest, inRate, TARGET_RATE);
-    enqueueSend(pcm16);
+    if (!isSilent(pcm16)) enqueueSend(pcm16);
   }
   setStatus('Распознаю…');
   await sendChain.catch(() => {});
