@@ -5,8 +5,10 @@
 import { pipeline } from "https://esm.run/@huggingface/transformers";
 
 const MODELS = {
-  base: "onnx-community/whisper-base",   // точнее, для RU/UK рекомендуется
-  tiny: "onnx-community/whisper-tiny",   // быстрее, для слабых устройств
+  large: "onnx-community/whisper-large-v3-turbo", // лучшее качество, ~500 МБ
+  small: "onnx-community/whisper-small",          // баланс качества и скорости
+  base: "onnx-community/whisper-base",            // легче, среднее качество
+  tiny: "onnx-community/whisper-tiny",            // для слабых устройств
 };
 
 const LANGUAGES = {
@@ -19,15 +21,25 @@ let transcriber = null;
 let activeModel = null;
 
 async function build(modelKey, device) {
-  return pipeline("automatic-speech-recognition", MODELS[modelKey], {
+  const opts = {
     device,
-    dtype: "q4",
     progress_callback: (p) => {
       if (p && typeof p.progress === "number") {
         self.postMessage({ type: "progress", progress: p.progress });
       }
     },
-  });
+  };
+  try {
+    // на GPU считаем в fp16 — точнее и быстрее; на WASM только q4
+    return await pipeline("automatic-speech-recognition", MODELS[modelKey], {
+      ...opts, dtype: device === "webgpu" ? "q4f16" : "q4",
+    });
+  } catch (e) {
+    // если q4f16 недоступна для этой модели — берём обычную q4
+    return await pipeline("automatic-speech-recognition", MODELS[modelKey], {
+      ...opts, dtype: "q4",
+    });
+  }
 }
 
 self.onmessage = async (e) => {
@@ -35,7 +47,7 @@ self.onmessage = async (e) => {
 
   /* ---------- Инициализация ---------- */
   if (type === "init") {
-    const want = MODELS[model] ? model : "base";
+    const want = MODELS[model] ? model : "small";
     try {
       transcriber = await build(want, "webgpu");
       activeModel = want;

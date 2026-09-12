@@ -3,7 +3,7 @@
 'use strict';
 
 const TARGET_RATE = 16000;        // Whisper принимает 16 кГц
-const CHUNK_SEC = 4;              // длина аудио-чанка для распознавания
+const CHUNK_SEC = 8;              // длина аудио-чанка для распознавания
 const CHUNK_SAMPLES = TARGET_RATE * CHUNK_SEC;
 
 /* ---------- Состояние ---------- */
